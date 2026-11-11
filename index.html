@@ -38,7 +38,7 @@ button,input,select{font:inherit;color:inherit}
 .seg button{flex:1;border:0;background:transparent;padding:9px 8px;cursor:pointer;min-height:42px;border-right:1px solid var(--line)}
 .seg button:last-child{border-right:0}
 .seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg);font-weight:700}
-#map,#gmap{display:block;width:100%;height:320px;border-radius:10px;border:1px solid var(--line);background:var(--chip)}
+#gmap{display:block;width:100%;height:320px;border-radius:10px;border:1px solid var(--line);background:var(--chip)}
 .status{font-size:13px;color:var(--muted);min-height:20px}
 .status.err{color:var(--hot)}
 .list{display:flex;flex-direction:column;gap:10px;margin:0;padding:0;list-style:none}
@@ -84,7 +84,6 @@ details{font-size:13px;color:var(--muted)} summary{cursor:pointer}
 
   <div id="status" class="status" role="status" aria-live="polite">按「使用目前位置」開始搜尋。</div>
   <div id="gmap" role="region" aria-label="Google 地圖" hidden></div>
-  <iframe id="map"title="Google 地圖:從你的位置到選取的加油站" loading="lazy" referrerpolicy="no-referrer-when-downgrade" hidden></iframe>
   <ol id="list" class="list"></ol>
   <button id="more" class="btn" type="button" hidden>顯示更多</button>
 
@@ -252,9 +251,8 @@ var gmap=null, gmarkers=[], gme=null, giw=null;
 function gmOk(){return !state.gmFail&&window.google&&google.maps&&google.maps.Map}
 
 window.gm_authFailure=function(){
-  /* 金鑰無效或未啟用 API:改用不需金鑰的內嵌路線地圖 */
+  /* 金鑰無效或未啟用 API:不顯示地圖,站點清單照常使用 */
   state.gmFail=true; $('gmap').hidden=true;
-  if(state.user){showMap();highlight(state.active<0?0:state.active,false)}
 };
 
 function loadGM(){
@@ -262,20 +260,18 @@ function loadGM(){
     if(window.google&&google.maps)return res(true);
     var s=document.createElement('script');
     s.src='https://maps.googleapis.com/maps/api/js?key='+encodeURIComponent(GMAPS_KEY)+'&language=zh-TW&region=TW&v=weekly';
-    s.async=true; s.onload=function(){res(true)}; s.onerror=function(){res(false)};
+    s.async=true; s.onload=function(){res(true)}; s.onerror=function(){state.gmFail=true;res(false)};
     document.head.appendChild(s);
   });
 }
 
 function showMap(){
   var rows=state.sorted.slice(0,state.shown), u=state.user;
-  if(!u||!rows.length){$('map').hidden=true;$('gmap').hidden=true;return}
-  if(gmOk()){drawGM(rows,u)}
-  else{$('gmap').hidden=true;showRoute(state.active<0?0:state.active)}
+  if(!u||!rows.length||!gmOk()){$('gmap').hidden=true;return}
+  try{drawGM(rows,u)}catch(e){state.gmFail=true;$('gmap').hidden=true}
 }
 
 function drawGM(rows,u){
-  $('map').hidden=true;
   var el=$('gmap'); el.hidden=false;
   if(!gmap){
     gmap=new google.maps.Map(el,{center:{lat:u.lat,lng:u.lng},zoom:14,mapTypeControl:false,streetViewControl:false,fullscreenControl:false,clickableIcons:false});
@@ -295,15 +291,6 @@ function drawGM(rows,u){
   gmap.fitBounds(b,40);
 }
 
-/* 備用:不需金鑰的內嵌路線(你的位置 → 選取的加油站) */
-function showRoute(i){
-  var map=$('map'), r=state.sorted[i], u=state.user;
-  if(!r||!u){map.hidden=true;return}
-  var url='https://maps.google.com/maps?saddr='+u.lat+','+u.lng+'&daddr='+r.s.lat+','+r.s.lng+'&hl=zh-TW&output=embed';
-  if(map.dataset.k!==url){map.src=url;map.dataset.k=url}
-  map.hidden=false;
-}
-
 function highlight(i,scrollToMap,fromMarker){
   var r=state.sorted[i];
   if(!r)return;
@@ -314,9 +301,6 @@ function highlight(i,scrollToMap,fromMarker){
     if(m){giw.setContent('<b>'+esc(r.s.name)+'</b>');giw.open(gmap,m);if(!fromMarker)gmap.panTo(m.getPosition())}
     if(fromMarker){var c=document.querySelector('.card[data-i="'+i+'"]');if(c)c.scrollIntoView({block:'nearest',behavior:'smooth'})}
     if(scrollToMap)$('gmap').scrollIntoView({block:'nearest',behavior:'smooth'});
-  }else{
-    showRoute(i);
-    if(scrollToMap)$('map').scrollIntoView({block:'nearest',behavior:'smooth'});
   }
 }
 
